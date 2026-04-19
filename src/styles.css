@@ -1,0 +1,153 @@
+:root {
+  background: transparent;
+  color: #f8fafc;
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr;
+  padding: 8px 14px;
+  background: transparent;
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-shell--locked {
+  cursor: default;
+}
+
+.app-shell--with-settings {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.spectrum {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
+  background: transparent;
+  pointer-events: none;
+}
+
+.style-toolbar {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(112px, 0.8fr) auto minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(128px, 0.85fr) auto 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(10, 14, 18, 0.88);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  cursor: default;
+  backdrop-filter: blur(12px);
+}
+
+.style-toolbar select,
+.toolbar-close {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.style-toolbar label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.82);
+  white-space: nowrap;
+}
+
+.style-toolbar .toolbar-field--compact {
+  grid-template-columns: auto minmax(76px, 1fr);
+}
+
+.toolbar-check {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px !important;
+}
+
+.toolbar-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: #4df0d2;
+}
+
+.style-toolbar input[type="range"] {
+  width: 100%;
+  accent-color: #4df0d2;
+}
+
+.style-toolbar select {
+  width: 100%;
+  padding: 5px 7px;
+}
+
+.style-toolbar option {
+  color: #111827;
+}
+
+.color-row {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 6px;
+}
+
+.color-row input {
+  width: 34px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.toolbar-close {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.toolbar-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
