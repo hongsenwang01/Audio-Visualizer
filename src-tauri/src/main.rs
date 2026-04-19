@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod audio;
 
 use serde::Serialize;
@@ -24,6 +26,10 @@ fn main() {
         .setup(|app| {
             #[cfg(desktop)]
             configure_tray(app)?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_skip_taskbar(true);
+            }
 
             let handle = app.handle().clone();
 
