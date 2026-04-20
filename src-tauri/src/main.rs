@@ -4,7 +4,7 @@ mod audio;
 
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[cfg(desktop)]
 use tauri::{
@@ -21,8 +21,33 @@ struct VisualSettings {
     smoothing: bool,
 }
 
+#[cfg(desktop)]
+struct EditModeState {
+    enabled: Arc<Mutex<bool>>,
+    menu_item: CheckMenuItem<tauri::Wry>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditModePayload {
+    enabled: bool,
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn set_edit_mode(
+    app: AppHandle,
+    state: State<'_, EditModeState>,
+    enabled: bool,
+) -> Result<(), String> {
+    set_edit_mode_value(&state.enabled, enabled)?;
+    apply_edit_mode(&app, &state.menu_item, enabled, false);
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![set_edit_mode])
         .setup(|app| {
             #[cfg(desktop)]
             configure_tray(app)?;
@@ -47,6 +72,8 @@ fn main() {
 fn configure_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let always_on_top =
         CheckMenuItem::with_id(app, "always_on_top", "保持置顶", true, true, None::<&str>)?;
+    let allow_edit =
+        CheckMenuItem::with_id(app, "allow_edit", "允许编辑", true, true, None::<&str>)?;
     let show_main =
         CheckMenuItem::with_id(app, "show_main", "显示主波形", true, true, None::<&str>)?;
     let show_glow = CheckMenuItem::with_id(app, "show_glow", "显示光晕", true, true, None::<&str>)?;
@@ -56,18 +83,18 @@ fn configure_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
     let menu = MenuBuilder::new(app)
         .item(&always_on_top)
+        .item(&allow_edit)
         .separator()
         .item(&show_main)
         .item(&show_glow)
         .item(&show_fine)
         .item(&smoothing)
         .separator()
-        .text("open_style_settings", "打开样式设置")
-        .separator()
         .text("quit", "退出")
         .build()?;
 
     let always_on_top_state = Arc::new(Mutex::new(true));
+    let edit_mode_enabled = Arc::new(Mutex::new(true));
     let visual_settings = Arc::new(Mutex::new(VisualSettings {
         show_glow: true,
         show_main: true,
@@ -75,13 +102,20 @@ fn configure_tray(app: &mut tauri::App) -> tauri::Result<()> {
         smoothing: true,
     }));
 
+    app.manage(EditModeState {
+        enabled: Arc::clone(&edit_mode_enabled),
+        menu_item: allow_edit.clone(),
+    });
+
     let always_on_top_item = always_on_top.clone();
+    let allow_edit_item = allow_edit.clone();
     let show_main_item = show_main.clone();
     let show_glow_item = show_glow.clone();
     let show_fine_item = show_fine.clone();
     let smoothing_item = smoothing.clone();
 
     let always_on_top_state_for_menu = Arc::clone(&always_on_top_state);
+    let edit_mode_enabled_for_menu = Arc::clone(&edit_mode_enabled);
     let visual_settings_for_menu = Arc::clone(&visual_settings);
 
     let mut tray = TrayIconBuilder::new()
@@ -101,6 +135,15 @@ fn configure_tray(app: &mut tauri::App) -> tauri::Result<()> {
                 }
 
                 let _ = always_on_top_item.set_checked(next);
+            }
+            "allow_edit" => {
+                let next = {
+                    let mut enabled = edit_mode_enabled_for_menu.lock().unwrap();
+                    *enabled = !*enabled;
+                    *enabled
+                };
+
+                apply_edit_mode(app, &allow_edit_item, next, true);
             }
             "show_main" => {
                 let settings = update_visual_settings(&visual_settings_for_menu, |settings| {
@@ -130,9 +173,6 @@ fn configure_tray(app: &mut tauri::App) -> tauri::Result<()> {
                 let _ = smoothing_item.set_checked(settings.smoothing);
                 let _ = app.emit("visual-settings", settings);
             }
-            "open_style_settings" => {
-                let _ = app.emit("open-style-settings", ());
-            }
             "quit" => app.exit(0),
             _ => {}
         });
@@ -154,4 +194,31 @@ where
     let mut settings = state.lock().unwrap();
     update(&mut settings);
     settings.clone()
+}
+
+#[cfg(desktop)]
+fn set_edit_mode_value(state: &Arc<Mutex<bool>>, enabled: bool) -> Result<(), String> {
+    let mut current = state
+        .lock()
+        .map_err(|_| "failed to lock edit mode state".to_string())?;
+    *current = enabled;
+    Ok(())
+}
+
+#[cfg(desktop)]
+fn apply_edit_mode(
+    app: &AppHandle,
+    menu_item: &CheckMenuItem<tauri::Wry>,
+    enabled: bool,
+    emit_event: bool,
+) {
+    let _ = menu_item.set_checked(enabled);
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_ignore_cursor_events(!enabled);
+    }
+
+    if emit_event {
+        let _ = app.emit("edit-mode-changed", EditModePayload { enabled });
+    }
 }

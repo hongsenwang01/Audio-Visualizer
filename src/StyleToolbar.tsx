@@ -37,16 +37,8 @@ export function StyleToolbar({ settings, onChange, onClose }: StyleToolbarProps)
         >
           <option value="wave">波浪条</option>
           <option value="bars">柱状图</option>
+          <option value="particles">流光粒子</option>
         </select>
-      </label>
-
-      <label className="toolbar-check">
-        <input
-          type="checkbox"
-          checked={settings.allowDrag}
-          onChange={(event) => update({ allowDrag: event.target.checked })}
-        />
-        <span>允许拖动</span>
       </label>
 
       <label>

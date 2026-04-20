@@ -4,7 +4,9 @@ import { clamp } from "./visualizers/math";
 
 export const BIN_COUNT = 96;
 export const STYLE_STORAGE_KEY = "audio-visualizer-style";
+export const EDIT_MODE_STORAGE_KEY = "audio-visualizer-edit-mode";
 export const POSITION_STORAGE_KEY = "audio-visualizer-position";
+export const DEFAULT_EDIT_ENABLED = true;
 
 export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
   showGlow: true,
@@ -15,7 +17,6 @@ export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
 
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   displayMode: "wave",
-  allowDrag: true,
   thickness: 6.5,
   opacity: 1,
   xScale: 1.55,
@@ -37,11 +38,10 @@ export function loadStyleSettings(): StyleSettings {
       : paletteFor(paletteId).colors;
 
     return {
-      displayMode: parsed.displayMode === "bars" ? "bars" : DEFAULT_STYLE_SETTINGS.displayMode,
-      allowDrag:
-        typeof parsed.allowDrag === "boolean"
-          ? parsed.allowDrag
-          : DEFAULT_STYLE_SETTINGS.allowDrag,
+      displayMode:
+        parsed.displayMode === "bars" || parsed.displayMode === "particles"
+          ? parsed.displayMode
+          : DEFAULT_STYLE_SETTINGS.displayMode,
       thickness: clamp(Number(parsed.thickness ?? DEFAULT_STYLE_SETTINGS.thickness), 2, 12),
       opacity: clamp(Number(parsed.opacity ?? DEFAULT_STYLE_SETTINGS.opacity), 0.55, 1),
       xScale: clamp(Number(parsed.xScale ?? DEFAULT_STYLE_SETTINGS.xScale), 0.7, 2.5),
@@ -51,6 +51,32 @@ export function loadStyleSettings(): StyleSettings {
   } catch {
     return DEFAULT_STYLE_SETTINGS;
   }
+}
+
+export function loadEditEnabled(): boolean {
+  const stored = window.localStorage.getItem(EDIT_MODE_STORAGE_KEY);
+  if (stored === "true" || stored === "false") {
+    return stored === "true";
+  }
+
+  const legacyStyle = window.localStorage.getItem(STYLE_STORAGE_KEY);
+  if (!legacyStyle) {
+    return DEFAULT_EDIT_ENABLED;
+  }
+
+  try {
+    const parsed = JSON.parse(legacyStyle) as Partial<{ allowDrag: boolean; allowEdit: boolean }>;
+    if (typeof parsed.allowEdit === "boolean") {
+      return parsed.allowEdit;
+    }
+    if (typeof parsed.allowDrag === "boolean") {
+      return parsed.allowDrag;
+    }
+  } catch {
+    return DEFAULT_EDIT_ENABLED;
+  }
+
+  return DEFAULT_EDIT_ENABLED;
 }
 
 function normalizeColors(colors: unknown[]): [string, string, string] {

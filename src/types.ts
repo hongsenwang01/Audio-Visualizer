@@ -12,12 +12,11 @@ export type VisualSettings = {
   smoothing: boolean;
 };
 
-export type DisplayMode = "wave" | "bars";
+export type DisplayMode = "wave" | "bars" | "particles";
 export type PaletteId = "neon" | "ice" | "citrus" | "sakura" | "mint" | "custom";
 
 export type StyleSettings = {
   displayMode: DisplayMode;
-  allowDrag: boolean;
   thickness: number;
   opacity: number;
   xScale: number;

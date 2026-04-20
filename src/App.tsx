@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
 import {
@@ -11,19 +12,26 @@ import {
 import { StyleToolbar } from "./StyleToolbar";
 import {
   BIN_COUNT,
+  EDIT_MODE_STORAGE_KEY,
   DEFAULT_VISUAL_SETTINGS,
   POSITION_STORAGE_KEY,
   STYLE_STORAGE_KEY,
+  loadEditEnabled,
   loadStyleSettings,
 } from "./settings";
 import type { AudioFrame, StyleSettings, VisualSettings } from "./types";
 import { applyEdgeFade } from "./visualizers/colors";
 import { drawBars } from "./visualizers/bars";
+import { drawParticles } from "./visualizers/particles";
 import { drawWave } from "./visualizers/wave";
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
+
+type EditModePayload = {
+  enabled: boolean;
+};
 
 export function App() {
   const tauriRuntime = isTauriRuntime();
@@ -32,7 +40,9 @@ export function App() {
   const displayBinsRef = useRef<number[]>(Array.from({ length: BIN_COUNT }, () => 0));
   const visualSettingsRef = useRef<VisualSettings>(DEFAULT_VISUAL_SETTINGS);
   const styleSettingsRef = useRef<StyleSettings>(loadStyleSettings());
+  const editEnabledRef = useRef(tauriRuntime ? loadEditEnabled() : true);
   const [styleSettings, setStyleSettings] = useState<StyleSettings>(styleSettingsRef.current);
+  const [editEnabled, setEditEnabled] = useState(editEnabledRef.current);
   const [settingsOpen, setSettingsOpen] = useState(!tauriRuntime);
 
   useEffect(() => {
@@ -65,14 +75,17 @@ export function App() {
       const visualUnlisten = listen<VisualSettings>("visual-settings", (event) => {
         visualSettingsRef.current = event.payload;
       });
-      const openSettingsUnlisten = listen("open-style-settings", () => {
-        setSettingsOpen(true);
+      const editModeUnlisten = listen<EditModePayload>("edit-mode-changed", (event) => {
+        setEditEnabled(event.payload.enabled);
+        if (!event.payload.enabled) {
+          setSettingsOpen(false);
+        }
       });
 
       return () => {
         mounted = false;
         visualUnlisten.then((unlisten) => unlisten()).catch(() => {});
-        openSettingsUnlisten.then((unlisten) => unlisten()).catch(() => {});
+        editModeUnlisten.then((unlisten) => unlisten()).catch(() => {});
         if (fallbackTimer !== undefined) {
           window.clearInterval(fallbackTimer);
         }
@@ -136,14 +149,26 @@ export function App() {
   }, [styleSettings]);
 
   useEffect(() => {
+    editEnabledRef.current = editEnabled;
+    window.localStorage.setItem(EDIT_MODE_STORAGE_KEY, String(editEnabled));
+
+    if (!editEnabled) {
+      setSettingsOpen(false);
+    }
+
+    if (tauriRuntime) {
+      invoke("set_edit_mode", { enabled: editEnabled }).catch(() => {});
+    }
+  }, [editEnabled, tauriRuntime]);
+
+  useEffect(() => {
     if (!tauriRuntime) {
       return;
     }
 
     const appWindow = getCurrentWindow();
-    const shouldIgnoreCursor = !settingsOpen && !styleSettings.allowDrag;
-    appWindow.setIgnoreCursorEvents(shouldIgnoreCursor).catch(() => {});
-  }, [settingsOpen, styleSettings.allowDrag, tauriRuntime]);
+    appWindow.setIgnoreCursorEvents(!editEnabled).catch(() => {});
+  }, [editEnabled, tauriRuntime]);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -186,13 +211,18 @@ export function App() {
 
       const visualSettings = visualSettingsRef.current;
       const currentStyle = styleSettingsRef.current;
-      const smoothedBins = spatialSmooth(
-        displayBins,
-        currentStyle.displayMode === "bars" ? 0.24 : 0.42,
-      );
+      const spatialSmoothing =
+        currentStyle.displayMode === "wave"
+          ? 0.42
+          : currentStyle.displayMode === "bars"
+            ? 0.24
+            : 0.34;
+      const smoothedBins = spatialSmooth(displayBins, spatialSmoothing);
 
       if (currentStyle.displayMode === "bars") {
         drawBars(ctx, smoothedBins, rect.width, rect.height, visualSettings, currentStyle);
+      } else if (currentStyle.displayMode === "particles") {
+        drawParticles(ctx, smoothedBins, rect.width, rect.height, visualSettings, currentStyle);
       } else {
         drawWave(ctx, smoothedBins, rect.width, rect.height, visualSettings, currentStyle);
       }
@@ -207,7 +237,7 @@ export function App() {
   }, []);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
-    if (!tauriRuntime || event.button !== 0 || !styleSettingsRef.current.allowDrag) {
+    if (!tauriRuntime || event.button !== 0 || !editEnabledRef.current) {
       return;
     }
 
@@ -220,25 +250,44 @@ export function App() {
   };
 
   return (
-    <main
+    <div
       className={[
-        "app-shell",
-        tauriRuntime ? "" : "app-shell--debug",
-        settingsOpen ? "app-shell--with-settings" : "",
-        styleSettings.allowDrag ? "" : "app-shell--locked",
+        "app-root",
+        editEnabled ? "app-root--editable" : "app-root--locked",
+        settingsOpen ? "app-root--editing" : "",
       ].join(" ")}
       data-tauri-drag-region
       onPointerDown={handlePointerDown}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {settingsOpen && (
+      {editEnabled && !settingsOpen && (
+        <div className="edit-hover-zone">
+          <button
+            className="style-edit-trigger"
+            type="button"
+            data-interactive="true"
+            onClick={() => setSettingsOpen(true)}
+          >
+            编辑样式
+          </button>
+        </div>
+      )}
+      {editEnabled && settingsOpen && (
         <StyleToolbar
           settings={styleSettings}
           onChange={setStyleSettings}
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      <canvas ref={canvasRef} className="spectrum" aria-label="音频频谱波浪" />
-    </main>
+      <main
+        className={[
+          "app-shell",
+          tauriRuntime ? "" : "app-shell--debug",
+          editEnabled ? "" : "app-shell--locked",
+        ].join(" ")}
+      >
+        <canvas ref={canvasRef} className="spectrum" aria-label="音频频谱波浪" />
+      </main>
+    </div>
   );
 }
