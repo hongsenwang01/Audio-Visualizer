@@ -39,6 +39,18 @@ select {
   -webkit-user-select: none;
 }
 
+.app-shell--debug {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.74)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.05) 0,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 48px
+    );
+}
+
 .app-shell--locked {
   cursor: default;
 }
