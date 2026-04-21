@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Audio Visualizer Widget",
-        "width": 720,
-        "height": 180,
+        "width": 960,
+        "height": 420,
         "minWidth": 320,
         "minHeight": 120,
         "decorations": false,
