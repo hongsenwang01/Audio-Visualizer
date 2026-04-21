@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
 import {
   makePreviewBins,
@@ -9,7 +10,7 @@ import {
   shapeSpectrum,
   spatialSmooth,
 } from "./audioPreview";
-import { StyleToolbar } from "./StyleToolbar";
+import NavigationBarUi from "./导航栏ui";
 import {
   BIN_COUNT,
   EDIT_MODE_STORAGE_KEY,
@@ -33,6 +34,11 @@ type EditModePayload = {
   enabled: boolean;
 };
 
+const CHART_STAGE_HEIGHT = 180;
+const EDIT_NAV_REGION_HEIGHT = 220;
+const DEFAULT_WINDOW_HEIGHT = CHART_STAGE_HEIGHT;
+const EDIT_WINDOW_HEIGHT = CHART_STAGE_HEIGHT + EDIT_NAV_REGION_HEIGHT;
+
 export function App() {
   const tauriRuntime = isTauriRuntime();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -43,7 +49,6 @@ export function App() {
   const editEnabledRef = useRef(tauriRuntime ? loadEditEnabled() : true);
   const [styleSettings, setStyleSettings] = useState<StyleSettings>(styleSettingsRef.current);
   const [editEnabled, setEditEnabled] = useState(editEnabledRef.current);
-  const [settingsOpen, setSettingsOpen] = useState(!tauriRuntime);
 
   useEffect(() => {
     let mounted = true;
@@ -77,9 +82,6 @@ export function App() {
       });
       const editModeUnlisten = listen<EditModePayload>("edit-mode-changed", (event) => {
         setEditEnabled(event.payload.enabled);
-        if (!event.payload.enabled) {
-          setSettingsOpen(false);
-        }
       });
 
       return () => {
@@ -152,10 +154,6 @@ export function App() {
     editEnabledRef.current = editEnabled;
     window.localStorage.setItem(EDIT_MODE_STORAGE_KEY, String(editEnabled));
 
-    if (!editEnabled) {
-      setSettingsOpen(false);
-    }
-
     if (tauriRuntime) {
       invoke("set_edit_mode", { enabled: editEnabled }).catch(() => {});
     }
@@ -168,6 +166,39 @@ export function App() {
 
     const appWindow = getCurrentWindow();
     appWindow.setIgnoreCursorEvents(!editEnabled).catch(() => {});
+  }, [editEnabled, tauriRuntime]);
+
+  useEffect(() => {
+    if (!tauriRuntime) {
+      return;
+    }
+
+    const appWindow = getCurrentWindow();
+
+    const syncWindowHeight = async () => {
+      try {
+        const size = await appWindow.innerSize();
+        const position = await appWindow.innerPosition();
+        const scaleFactor = await appWindow.scaleFactor();
+        const logicalSize = size.toLogical(scaleFactor);
+        const logicalPosition = position.toLogical(scaleFactor);
+        const nextHeight = editEnabled ? EDIT_WINDOW_HEIGHT : DEFAULT_WINDOW_HEIGHT;
+
+        if (Math.abs(logicalSize.height - nextHeight) < 1) {
+          return;
+        }
+
+        const delta = nextHeight - logicalSize.height;
+        await appWindow.setPosition(
+          new LogicalPosition(logicalPosition.x, logicalPosition.y - delta),
+        );
+        await appWindow.setSize(new LogicalSize(logicalSize.width, nextHeight));
+      } catch {
+        // Ignore window sizing failures and keep the current layout.
+      }
+    };
+
+    syncWindowHeight();
   }, [editEnabled, tauriRuntime]);
 
   useEffect(() => {
@@ -236,13 +267,17 @@ export function App() {
     return () => window.cancelAnimationFrame(animationFrame);
   }, []);
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!tauriRuntime || event.button !== 0 || !editEnabledRef.current) {
       return;
     }
 
     const target = event.target as HTMLElement;
-    if (target.closest("[data-interactive='true']")) {
+    if (
+      target.closest(
+        "[data-interactive='true'], button, input, select, textarea, label, a, [role='button']",
+      )
+    ) {
       return;
     }
 
@@ -251,43 +286,27 @@ export function App() {
 
   return (
     <div
-      className={[
-        "app-root",
-        editEnabled ? "app-root--editable" : "app-root--locked",
-        settingsOpen ? "app-root--editing" : "",
-      ].join(" ")}
+      className={["app-root", editEnabled ? "app-root--editable" : "app-root--locked"].join(" ")}
       data-tauri-drag-region
       onPointerDown={handlePointerDown}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {editEnabled && !settingsOpen && (
-        <div className="edit-hover-zone">
-          <button
-            className="style-edit-trigger"
-            type="button"
-            data-interactive="true"
-            onClick={() => setSettingsOpen(true)}
-          >
-            编辑样式
-          </button>
-        </div>
-      )}
-      {editEnabled && settingsOpen && (
-        <StyleToolbar
-          settings={styleSettings}
-          onChange={setStyleSettings}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
-      <main
-        className={[
-          "app-shell",
-          tauriRuntime ? "" : "app-shell--debug",
-          editEnabled ? "" : "app-shell--locked",
-        ].join(" ")}
-      >
-        <canvas ref={canvasRef} className="spectrum" aria-label="音频频谱波浪" />
-      </main>
+      <div className={["widget-frame", editEnabled ? "widget-frame--editing" : ""].join(" ")}>
+        {editEnabled && (
+          <section className="widget-nav-region">
+            <NavigationBarUi settings={styleSettings} onSettingsChange={setStyleSettings} />
+          </section>
+        )}
+        <main
+          className={[
+            "app-shell",
+            tauriRuntime ? "" : "app-shell--debug",
+            editEnabled ? "" : "app-shell--locked",
+          ].join(" ")}
+        >
+          <canvas ref={canvasRef} className="spectrum" aria-label="音频频谱波浪" />
+        </main>
+      </div>
     </div>
   );
 }

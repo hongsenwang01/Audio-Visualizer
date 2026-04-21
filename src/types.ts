@@ -13,6 +13,7 @@ export type VisualSettings = {
 };
 
 export type DisplayMode = "wave" | "bars" | "particles";
+export type ColorMode = "solid" | "gradient";
 export type PaletteId = "neon" | "ice" | "citrus" | "sakura" | "mint" | "custom";
 
 export type StyleSettings = {
@@ -20,6 +21,9 @@ export type StyleSettings = {
   thickness: number;
   opacity: number;
   xScale: number;
+  colorMode: ColorMode;
+  xAxisLength: number;
+  barWidth: number;
   paletteId: PaletteId;
   colors: [string, string, string];
 };

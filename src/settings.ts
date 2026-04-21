@@ -15,11 +15,21 @@ export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
   smoothing: true,
 };
 
+const MIN_X_SCALE = 0.7;
+const MAX_X_SCALE = 2.5;
+const MIN_X_AXIS_LENGTH = 20;
+const MAX_X_AXIS_LENGTH = 100;
+const MIN_BAR_WIDTH = 2;
+const MAX_BAR_WIDTH = 24;
+
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   displayMode: "wave",
   thickness: 6.5,
   opacity: 1,
   xScale: 1.55,
+  colorMode: "gradient",
+  xAxisLength: 58,
+  barWidth: 6.5,
   paletteId: "neon",
   colors: ["#56f5d4", "#ffe35c", "#ff6b6b"],
 };
@@ -36,15 +46,36 @@ export function loadStyleSettings(): StyleSettings {
     const colors = Array.isArray(parsed.colors)
       ? normalizeColors(parsed.colors)
       : paletteFor(paletteId).colors;
+    const barWidth = clamp(
+      Number(parsed.barWidth ?? parsed.thickness ?? DEFAULT_STYLE_SETTINGS.barWidth),
+      MIN_BAR_WIDTH,
+      MAX_BAR_WIDTH,
+    );
+    const xAxisLength = clamp(
+      Number(
+        parsed.xAxisLength ??
+          xScaleToXAxisLength(Number(parsed.xScale ?? DEFAULT_STYLE_SETTINGS.xScale)),
+      ),
+      MIN_X_AXIS_LENGTH,
+      MAX_X_AXIS_LENGTH,
+    );
+    const xScale = clamp(
+      Number(parsed.xScale ?? xAxisLengthToXScale(xAxisLength)),
+      MIN_X_SCALE,
+      MAX_X_SCALE,
+    );
 
     return {
       displayMode:
         parsed.displayMode === "bars" || parsed.displayMode === "particles"
           ? parsed.displayMode
           : DEFAULT_STYLE_SETTINGS.displayMode,
-      thickness: clamp(Number(parsed.thickness ?? DEFAULT_STYLE_SETTINGS.thickness), 2, 12),
+      thickness: barWidth,
       opacity: clamp(Number(parsed.opacity ?? DEFAULT_STYLE_SETTINGS.opacity), 0.55, 1),
-      xScale: clamp(Number(parsed.xScale ?? DEFAULT_STYLE_SETTINGS.xScale), 0.7, 2.5),
+      xScale,
+      colorMode: normalizeColorMode(parsed.colorMode, paletteId, colors),
+      xAxisLength,
+      barWidth,
       paletteId,
       colors,
     };
@@ -86,4 +117,37 @@ function normalizeColors(colors: unknown[]): [string, string, string] {
       ? color
       : DEFAULT_STYLE_SETTINGS.colors[index];
   }) as [string, string, string];
+}
+
+function normalizeColorMode(
+  colorMode: unknown,
+  paletteId: StyleSettings["paletteId"],
+  colors: StyleSettings["colors"],
+): StyleSettings["colorMode"] {
+  if (colorMode === "solid" || colorMode === "gradient") {
+    return colorMode;
+  }
+
+  if (paletteId !== "custom") {
+    return "gradient";
+  }
+
+  return colors[0] === colors[1] && colors[1] === colors[2] ? "solid" : "gradient";
+}
+
+export function xScaleToXAxisLength(xScale: number) {
+  const normalized = (clamp(xScale, MIN_X_SCALE, MAX_X_SCALE) - MIN_X_SCALE) /
+    (MAX_X_SCALE - MIN_X_SCALE);
+  return clamp(
+    MIN_X_AXIS_LENGTH + normalized * (MAX_X_AXIS_LENGTH - MIN_X_AXIS_LENGTH),
+    MIN_X_AXIS_LENGTH,
+    MAX_X_AXIS_LENGTH,
+  );
+}
+
+export function xAxisLengthToXScale(xAxisLength: number) {
+  const normalized =
+    (clamp(xAxisLength, MIN_X_AXIS_LENGTH, MAX_X_AXIS_LENGTH) - MIN_X_AXIS_LENGTH) /
+    (MAX_X_AXIS_LENGTH - MIN_X_AXIS_LENGTH);
+  return clamp(MIN_X_SCALE + normalized * (MAX_X_SCALE - MIN_X_SCALE), MIN_X_SCALE, MAX_X_SCALE);
 }
