@@ -13,8 +13,12 @@ export function StyleToolbar({ settings, onChange, onClose }: StyleToolbarProps)
   };
 
   const updateColor = (index: number, color: string) => {
-    const colors = [...settings.colors] as [string, string, string];
-    colors[index] = color;
+    const colors =
+      settings.colorMode === "solid"
+        ? ([color, color, color] as [string, string, string])
+        : (([...settings.colors] as [string, string, string]).map((currentColor, currentIndex) =>
+            currentIndex === index ? color : currentColor,
+          ) as [string, string, string]);
     onChange({ ...settings, paletteId: "custom", colors });
   };
 

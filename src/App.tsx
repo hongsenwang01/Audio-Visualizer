@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
-import { getCurrentWindow, PhysicalPosition } from "@tauri-apps/api/window";
+import {
+  currentMonitor,
+  getCurrentWindow,
+  monitorFromPoint,
+  PhysicalPosition,
+  primaryMonitor,
+} from "@tauri-apps/api/window";
 import {
   makePreviewBins,
   noiseGate,
@@ -34,10 +39,7 @@ type EditModePayload = {
   enabled: boolean;
 };
 
-const CHART_STAGE_HEIGHT = 180;
-const EDIT_NAV_REGION_HEIGHT = 220;
-const DEFAULT_WINDOW_HEIGHT = CHART_STAGE_HEIGHT;
-const EDIT_WINDOW_HEIGHT = CHART_STAGE_HEIGHT + EDIT_NAV_REGION_HEIGHT;
+const TASKBAR_GAP_PX = 2;
 
 export function App() {
   const tauriRuntime = isTauriRuntime();
@@ -47,6 +49,7 @@ export function App() {
   const visualSettingsRef = useRef<VisualSettings>(DEFAULT_VISUAL_SETTINGS);
   const styleSettingsRef = useRef<StyleSettings>(loadStyleSettings());
   const editEnabledRef = useRef(tauriRuntime ? loadEditEnabled() : true);
+  const pendingPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [styleSettings, setStyleSettings] = useState<StyleSettings>(styleSettingsRef.current);
   const [editEnabled, setEditEnabled] = useState(editEnabledRef.current);
 
@@ -108,32 +111,113 @@ export function App() {
     }
 
     const appWindow = getCurrentWindow();
+    const isSamePosition = (
+      left: { x: number; y: number },
+      right: { x: number; y: number },
+    ) => Math.abs(left.x - right.x) < 1 && Math.abs(left.y - right.y) < 1;
 
-    const applySavedPosition = async () => {
+    const persistPosition = (position: { x: number; y: number }) => {
+      window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position));
+    };
+
+    const loadStoredPosition = () => {
       const stored = window.localStorage.getItem(POSITION_STORAGE_KEY);
       if (!stored) {
-        return;
+        return null;
       }
 
       try {
         const parsed = JSON.parse(stored) as Partial<{ x: number; y: number }>;
         if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
-          await appWindow.setPosition(new PhysicalPosition(parsed.x!, parsed.y!));
+          return { x: parsed.x!, y: parsed.y! };
         }
       } catch {
         window.localStorage.removeItem(POSITION_STORAGE_KEY);
       }
+
+      return null;
+    };
+
+    const resolveMonitorForPosition = async (position: { x: number; y: number }) => {
+      const windowSize = await appWindow.outerSize();
+      const targetX = position.x + windowSize.width / 2;
+      const targetY = position.y + windowSize.height / 2;
+
+      return (
+        (await monitorFromPoint(targetX, targetY)) ??
+        (await currentMonitor()) ??
+        (await primaryMonitor())
+      );
+    };
+
+    const resolveClampedPosition = async (
+      position: { x: number; y: number },
+      forceBottom: boolean,
+    ) => {
+      const monitor = await resolveMonitorForPosition(position);
+      if (!monitor) {
+        return position;
+      }
+
+      const windowSize = await appWindow.outerSize();
+      const bottomLimitY = Math.max(
+        monitor.workArea.position.y,
+        monitor.workArea.position.y + monitor.workArea.size.height - windowSize.height - TASKBAR_GAP_PX,
+      );
+
+      return {
+        x: Math.round(position.x),
+        y: Math.round(forceBottom ? bottomLimitY : Math.min(position.y, bottomLimitY)),
+      };
+    };
+
+    const applyWindowPosition = async (position: { x: number; y: number }) => {
+      const current = await appWindow.outerPosition();
+      if (isSamePosition(current, position)) {
+        return position;
+      }
+
+      pendingPositionRef.current = position;
+      await appWindow.setPosition(new PhysicalPosition(position.x, position.y));
+      return position;
+    };
+
+    const applySavedPosition = async () => {
+      const current = await appWindow.outerPosition();
+      const stored = loadStoredPosition();
+      const next = await resolveClampedPosition(stored ?? current, true);
+      persistPosition(next);
+      await applyWindowPosition(next);
+    };
+
+    const handleWindowMoved = async (position: { x: number; y: number }) => {
+      const pending = pendingPositionRef.current;
+      if (pending) {
+        if (isSamePosition(position, pending)) {
+          pendingPositionRef.current = null;
+          persistPosition(pending);
+          return;
+        }
+
+        pendingPositionRef.current = null;
+      }
+
+      const next = await resolveClampedPosition(position, false);
+      if (!isSamePosition(next, position)) {
+        persistPosition(next);
+        await applyWindowPosition(next);
+        return;
+      }
+
+      persistPosition(position);
     };
 
     let unlistenMoved: (() => void) | undefined;
 
-    applySavedPosition();
+    applySavedPosition().catch(() => {});
     appWindow
       .onMoved(({ payload }) => {
-        window.localStorage.setItem(
-          POSITION_STORAGE_KEY,
-          JSON.stringify({ x: payload.x, y: payload.y }),
-        );
+        void handleWindowMoved({ x: payload.x, y: payload.y });
       })
       .then((unlisten) => {
         unlistenMoved = unlisten;
@@ -166,39 +250,6 @@ export function App() {
 
     const appWindow = getCurrentWindow();
     appWindow.setIgnoreCursorEvents(!editEnabled).catch(() => {});
-  }, [editEnabled, tauriRuntime]);
-
-  useEffect(() => {
-    if (!tauriRuntime) {
-      return;
-    }
-
-    const appWindow = getCurrentWindow();
-
-    const syncWindowHeight = async () => {
-      try {
-        const size = await appWindow.innerSize();
-        const position = await appWindow.innerPosition();
-        const scaleFactor = await appWindow.scaleFactor();
-        const logicalSize = size.toLogical(scaleFactor);
-        const logicalPosition = position.toLogical(scaleFactor);
-        const nextHeight = editEnabled ? EDIT_WINDOW_HEIGHT : DEFAULT_WINDOW_HEIGHT;
-
-        if (Math.abs(logicalSize.height - nextHeight) < 1) {
-          return;
-        }
-
-        const delta = nextHeight - logicalSize.height;
-        await appWindow.setPosition(
-          new LogicalPosition(logicalPosition.x, logicalPosition.y - delta),
-        );
-        await appWindow.setSize(new LogicalSize(logicalSize.width, nextHeight));
-      } catch {
-        // Ignore window sizing failures and keep the current layout.
-      }
-    };
-
-    syncWindowHeight();
   }, [editEnabled, tauriRuntime]);
 
   useEffect(() => {

@@ -46,6 +46,8 @@ const DOCK_BOTTOM = 18;
 const sliderThumbClasses =
   "[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:bg-transparent [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:bg-transparent [&::-moz-range-thumb]:border-0";
 
+const repeatColor = (color: string): [string, string, string] => [color, color, color];
+
 const getSliderFillStyle = (value: number, min: number, max: number) => {
   const percentage = ((value - min) / (max - min)) * 100;
   return {
@@ -86,9 +88,6 @@ export default function NavigationBarUi({
   const [isSelectorHovered, setIsSelectorHovered] = useState(false);
   const [openWheelIndex, setOpenWheelIndex] = useState<number | null>(null);
   const [hoveredColorHex, setHoveredColorHex] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const chartType = displayModeToChartType(settings.displayMode);
   const colorMode = settings.colorMode;
@@ -96,32 +95,8 @@ export default function NavigationBarUi({
   const xAxisLength = settings.xAxisLength ?? Math.round(xScaleToXAxisLength(settings.xScale));
   const barWidth = settings.barWidth ?? settings.thickness;
 
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight,
-        });
-      }
-    };
-
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
-
   const updateSettings = (patch: Partial<StyleSettings>) => {
     onSettingsChange({ ...settings, ...patch });
-  };
-
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) {
-      return;
-    }
-
-    const rect = containerRef.current.getBoundingClientRect();
-    setMousePos({ x: event.clientX - rect.left, y: event.clientY - rect.top });
   };
 
   const handleChartTypeChange = (nextChartType: ChartType) => {
@@ -143,13 +118,20 @@ export default function NavigationBarUi({
   };
 
   const handleColorModeChange = (mode: StyleSettings["colorMode"]) => {
-    updateSettings({ colorMode: mode });
+    updateSettings({
+      colorMode: mode,
+      colors: mode === "solid" ? repeatColor(colors[0]) : colors,
+    });
     setOpenWheelIndex(null);
   };
 
   const handleColorChange = (index: number, color: string) => {
-    const nextColors = [...colors] as [string, string, string];
-    nextColors[index] = color;
+    const nextColors =
+      colorMode === "solid"
+        ? repeatColor(color)
+        : (([...colors] as [string, string, string]).map((currentColor, currentIndex) =>
+            currentIndex === index ? color : currentColor,
+          ) as [string, string, string]);
     updateSettings({
       colors: nextColors,
       paletteId: "custom",
@@ -160,7 +142,6 @@ export default function NavigationBarUi({
 
   return (
     <div
-      ref={containerRef}
       className="relative z-10 w-full max-w-4xl h-full flex flex-col items-center group overflow-visible"
       data-interactive="true"
       onMouseEnter={() => setIsHoveringArea(true)}
@@ -170,24 +151,7 @@ export default function NavigationBarUi({
         setOpenWheelIndex(null);
         setHoveredColorHex(null);
       }}
-      onMouseMove={handleMouseMove}
     >
-        {isHoveringArea && !isDockOpen && containerSize.width > 0 && (
-          <svg
-            className="absolute z-0"
-            style={{ top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-          >
-            <polygon
-              points={`${containerSize.width / 2 - 70},${containerSize.height - 74} ${containerSize.width / 2 + 70},${containerSize.height - 74} ${mousePos.x},${Math.max(22, Math.min(containerSize.height - 16, mousePos.y))}`}
-              fill="rgba(239, 68, 68, 0.15)"
-              stroke="rgba(239, 68, 68, 0.6)"
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              className="transition-opacity duration-300"
-            />
-          </svg>
-        )}
-
         <div
           className={`absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-20 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] group/dock
             ${!isHoveringArea && !isDockOpen ? "opacity-0 -translate-y-4 pointer-events-none" : "opacity-100 translate-y-0 pointer-events-auto"}
