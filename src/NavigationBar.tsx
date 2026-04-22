@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -34,7 +34,7 @@ const PETAL_COLORS = [
   { hex: "#FFFFFF", r: 0, a: 0 },
 ] as const;
 
-type NavigationBarUiProps = {
+type NavigationBarProps = {
   settings: StyleSettings;
   onSettingsChange: (settings: StyleSettings) => void;
 };
@@ -79,10 +79,10 @@ function chartTypeToDisplayMode(chartType: ChartType): StyleSettings["displayMod
   return "wave";
 }
 
-export default function NavigationBarUi({
+export default function NavigationBar({
   settings,
   onSettingsChange,
-}: NavigationBarUiProps) {
+}: NavigationBarProps) {
   const [isHoveringArea, setIsHoveringArea] = useState(false);
   const [isDockOpen, setIsDockOpen] = useState(false);
   const [isSelectorHovered, setIsSelectorHovered] = useState(false);

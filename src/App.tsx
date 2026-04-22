@@ -15,7 +15,7 @@ import {
   shapeSpectrum,
   spatialSmooth,
 } from "./audioPreview";
-import NavigationBarUi from "./导航栏ui";
+import NavigationBar from "./NavigationBar";
 import {
   BIN_COUNT,
   EDIT_MODE_STORAGE_KEY,
@@ -345,7 +345,7 @@ export function App() {
       <div className={["widget-frame", editEnabled ? "widget-frame--editing" : ""].join(" ")}>
         {editEnabled && (
           <section className="widget-nav-region">
-            <NavigationBarUi settings={styleSettings} onSettingsChange={setStyleSettings} />
+            <NavigationBar settings={styleSettings} onSettingsChange={setStyleSettings} />
           </section>
         )}
         <main
