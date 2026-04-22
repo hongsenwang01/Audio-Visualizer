@@ -39,7 +39,7 @@ type EditModePayload = {
   enabled: boolean;
 };
 
-const TASKBAR_GAP_PX = 2;
+const TASKBAR_GAP_PX = 0;
 
 export function App() {
   const tauriRuntime = isTauriRuntime();
@@ -120,24 +120,6 @@ export function App() {
       window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position));
     };
 
-    const loadStoredPosition = () => {
-      const stored = window.localStorage.getItem(POSITION_STORAGE_KEY);
-      if (!stored) {
-        return null;
-      }
-
-      try {
-        const parsed = JSON.parse(stored) as Partial<{ x: number; y: number }>;
-        if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
-          return { x: parsed.x!, y: parsed.y! };
-        }
-      } catch {
-        window.localStorage.removeItem(POSITION_STORAGE_KEY);
-      }
-
-      return null;
-    };
-
     const resolveMonitorForPosition = async (position: { x: number; y: number }) => {
       const windowSize = await appWindow.outerSize();
       const targetX = position.x + windowSize.width / 2;
@@ -182,10 +164,26 @@ export function App() {
       return position;
     };
 
-    const applySavedPosition = async () => {
-      const current = await appWindow.outerPosition();
-      const stored = loadStoredPosition();
-      const next = await resolveClampedPosition(stored ?? current, true);
+    const resolveDefaultPosition = async () => {
+      const monitor = (await currentMonitor()) ?? (await primaryMonitor());
+      if (!monitor) {
+        return appWindow.outerPosition();
+      }
+
+      const windowSize = await appWindow.outerSize();
+      const centeredX =
+        monitor.workArea.position.x + (monitor.workArea.size.width - windowSize.width) / 2;
+      const bottomY =
+        monitor.workArea.position.y + monitor.workArea.size.height - windowSize.height - TASKBAR_GAP_PX;
+
+      return {
+        x: Math.round(centeredX),
+        y: Math.round(Math.max(monitor.workArea.position.y, bottomY)),
+      };
+    };
+
+    const applyDefaultPosition = async () => {
+      const next = await resolveDefaultPosition();
       persistPosition(next);
       await applyWindowPosition(next);
     };
@@ -214,7 +212,7 @@ export function App() {
 
     let unlistenMoved: (() => void) | undefined;
 
-    applySavedPosition().catch(() => {});
+    applyDefaultPosition().catch(() => {});
     appWindow
       .onMoved(({ payload }) => {
         void handleWindowMoved({ x: payload.x, y: payload.y });

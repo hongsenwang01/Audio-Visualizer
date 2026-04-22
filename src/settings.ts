@@ -85,28 +85,6 @@ export function loadStyleSettings(): StyleSettings {
 }
 
 export function loadEditEnabled(): boolean {
-  const stored = window.localStorage.getItem(EDIT_MODE_STORAGE_KEY);
-  if (stored === "true" || stored === "false") {
-    return stored === "true";
-  }
-
-  const legacyStyle = window.localStorage.getItem(STYLE_STORAGE_KEY);
-  if (!legacyStyle) {
-    return DEFAULT_EDIT_ENABLED;
-  }
-
-  try {
-    const parsed = JSON.parse(legacyStyle) as Partial<{ allowDrag: boolean; allowEdit: boolean }>;
-    if (typeof parsed.allowEdit === "boolean") {
-      return parsed.allowEdit;
-    }
-    if (typeof parsed.allowDrag === "boolean") {
-      return parsed.allowDrag;
-    }
-  } catch {
-    return DEFAULT_EDIT_ENABLED;
-  }
-
   return DEFAULT_EDIT_ENABLED;
 }
 
